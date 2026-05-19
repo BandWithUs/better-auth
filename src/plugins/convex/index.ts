@@ -1,10 +1,7 @@
 import type { BetterAuthPlugin, Session, User } from "better-auth";
 import type { BetterAuthOptions } from "better-auth/minimal";
-import {
-  oauthProvider as oauthProviderPlugin,
-  type OAuthOptions,
-  type Scope,
-} from "@better-auth/oauth-provider";
+import { oauthProvider as oauthProviderPlugin } from "@better-auth/oauth-provider";
+import type { OAuthOptions, Scope } from "@better-auth/oauth-provider";
 import {
   createAuthEndpoint,
   createAuthMiddleware,
@@ -34,7 +31,13 @@ const normalizeBeforeHooks = <THook extends BetterAuthBeforeHook>(
 ): BetterAuthBeforeHooks => {
   return hooks.map((hook) => ({
     ...hook,
-    matcher: (ctx: BetterAuthHookContext) => Boolean(hook.matcher(ctx)),
+    matcher: (ctx: BetterAuthHookContext) => {
+      try {
+        return Boolean(hook.matcher(ctx));
+      } catch {
+        return false;
+      }
+    },
   }));
 };
 
@@ -43,7 +46,13 @@ const normalizeAfterHooks = <THook extends BetterAuthAfterHook>(
 ): BetterAuthAfterHooks => {
   return hooks.map((hook) => ({
     ...hook,
-    matcher: (ctx: BetterAuthHookContext) => Boolean(hook.matcher(ctx)),
+    matcher: (ctx: BetterAuthHookContext) => {
+      try {
+        return Boolean(hook.matcher(ctx));
+      } catch {
+        return false;
+      }
+    },
   }));
 };
 
@@ -309,7 +318,7 @@ export const convex = (opts: {
         }
         return ctx.getPlugin(pluginId as any);
       }) as typeof ctx.getPlugin;
-      const oauthProviderInit = await oauthProvider.init?.({
+      await oauthProvider.init?.({
         ...ctx,
         getPlugin,
       } as any);
@@ -328,13 +337,7 @@ export const convex = (opts: {
           `Better Auth basePath ${options.basePath} does not match Convex plugin basePath ${opts.options?.basePath}. This is probably a mistake.`
         );
       }
-      return {
-        ...oauthProviderInit,
-        context: {
-          ...oauthProviderInit?.context,
-          getPlugin,
-        },
-      };
+      return { context: { getPlugin } };
     },
     hooks: {
       before: [

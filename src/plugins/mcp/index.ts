@@ -1,8 +1,8 @@
 import {
   mcpHandler,
   oauthProviderAuthServerMetadata,
-  type ResourceServerMetadata,
 } from "@better-auth/oauth-provider";
+import type { ResourceServerMetadata } from "@better-auth/oauth-provider";
 import type { verifyAccessToken } from "better-auth/oauth2";
 import type { JWTPayload } from "jose";
 
