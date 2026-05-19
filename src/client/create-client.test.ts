@@ -173,6 +173,28 @@ describe("createClient route registration", () => {
       authorization_servers: ["https://deployment.convex.site/custom/auth"],
       bearer_methods_supported: ["header"],
     });
+
+    const mcpHandler = getRouteHandler(
+      http,
+      "/.well-known/oauth-protected-resource/mcp",
+      "GET"
+    );
+    expect(mcpHandler).toBeTruthy();
+    const mcpResponse = await mcpHandler!._handler(
+      {},
+      new Request(
+        "https://deployment.convex.site/.well-known/oauth-protected-resource/mcp"
+      )
+    );
+
+    expect(mcpResponse.headers.get("content-type")).toContain(
+      "application/json"
+    );
+    await expect(mcpResponse.json()).resolves.toMatchObject({
+      resource: "https://deployment.convex.site/mcp",
+      authorization_servers: ["https://deployment.convex.site/custom/auth"],
+      bearer_methods_supported: ["header"],
+    });
   });
 
   it("restores preserved forwarded host headers before calling auth.handler", async () => {

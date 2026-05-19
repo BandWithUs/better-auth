@@ -115,15 +115,23 @@ const jsonResponse = (body: Record<string, unknown>) =>
     },
   });
 
-const protectedResourceMetadata = (path: string) => {
+const protectedResourceMetadata = (
+  resourcePath: string,
+  authorizationServerPath = resourcePath
+) => {
   const siteUrl = process.env.CONVEX_SITE_URL;
-  const resource = path === "/" ? siteUrl : `${siteUrl}${path}`;
+  const resource =
+    resourcePath === "/" ? siteUrl : `${siteUrl}${resourcePath}`;
+  const authorizationServer =
+    authorizationServerPath === "/"
+      ? siteUrl
+      : `${siteUrl}${authorizationServerPath}`;
   return {
     resource,
-    authorization_servers: [resource],
+    authorization_servers: [authorizationServer],
     scopes_supported: ["openid", "profile", "email", "offline_access"],
     bearer_methods_supported: ["header"],
-    resource_documentation: `${siteUrl}${path}`,
+    resource_documentation: `${siteUrl}${resourcePath}`,
   };
 };
 
@@ -145,6 +153,7 @@ const routeIfMissing = (
 const registerWellKnownRoutes = (http: HttpRouter, path: string) => {
   const issuerPath = path === "/" ? "" : path;
   const authPath = path === "/" ? "" : path;
+  const protectedResourceRoute = "/.well-known/oauth-protected-resource";
   routeIfMissing(http, "/.well-known/openid-configuration", () => {
     const url = `${process.env.CONVEX_SITE_URL}${authPath}/convex/.well-known/openid-configuration`;
     return Response.redirect(url);
@@ -173,15 +182,26 @@ const registerWellKnownRoutes = (http: HttpRouter, path: string) => {
       }
     );
   }
-  routeIfMissing(http, "/.well-known/oauth-protected-resource", () =>
-    jsonResponse(protectedResourceMetadata(path))
+  routeIfMissing(http, protectedResourceRoute, () =>
+    jsonResponse(protectedResourceMetadata(path, authPath || "/"))
   );
   if (issuerPath) {
-    routeIfMissing(
-      http,
-      `/.well-known/oauth-protected-resource${issuerPath}`,
-      () => jsonResponse(protectedResourceMetadata(path))
+    routeIfMissing(http, `${protectedResourceRoute}${issuerPath}`, () =>
+      jsonResponse(protectedResourceMetadata(path, authPath))
     );
+  }
+  if (!http.lookup(`${protectedResourceRoute}/_probe_`, "GET")) {
+    http.route({
+      pathPrefix: `${protectedResourceRoute}/`,
+      method: "GET",
+      handler: httpActionGeneric(async (_ctx, request) => {
+        const pathname = new URL(request.url).pathname;
+        const resourcePath = pathname.slice(protectedResourceRoute.length);
+        return jsonResponse(
+          protectedResourceMetadata(resourcePath, authPath || "/")
+        );
+      }),
+    });
   }
 };
 
