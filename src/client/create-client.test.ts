@@ -53,6 +53,13 @@ describe("createClient route registration", () => {
       getRouteHandler(http, "/.well-known/openid-configuration", "GET")
     ).toBeTruthy();
     expect(
+      getRouteHandler(
+        http,
+        "/.well-known/openid-configuration/custom/auth",
+        "GET"
+      )
+    ).toBeTruthy();
+    expect(
       getRouteHandler(http, "/.well-known/oauth-authorization-server", "GET")
     ).toBeTruthy();
     expect(

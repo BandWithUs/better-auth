@@ -149,6 +149,16 @@ const registerWellKnownRoutes = (http: HttpRouter, path: string) => {
     const url = `${process.env.CONVEX_SITE_URL}${authPath}/convex/.well-known/openid-configuration`;
     return Response.redirect(url);
   });
+  if (issuerPath) {
+    routeIfMissing(
+      http,
+      `/.well-known/openid-configuration${issuerPath}`,
+      () => {
+        const url = `${process.env.CONVEX_SITE_URL}${authPath}/convex/.well-known/openid-configuration`;
+        return Response.redirect(url);
+      }
+    );
+  }
   routeIfMissing(http, "/.well-known/oauth-authorization-server", () => {
     const url = `${process.env.CONVEX_SITE_URL}${authPath}/convex/.well-known/oauth-authorization-server`;
     return Response.redirect(url);
