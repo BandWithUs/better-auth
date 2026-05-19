@@ -273,7 +273,7 @@ export const convex = (opts: {
   });
   const oauthProviderOptions = opts.oauthProvider ?? {};
   const oauthProvider = oauthProviderPlugin({
-    loginPage: oauthProviderOptions.loginPage ?? "/sign-in",
+    loginPage: oauthProviderOptions.loginPage ?? "/not-used",
     consentPage: oauthProviderOptions.consentPage ?? "/oauth2/consent",
     allowDynamicClientRegistration:
       oauthProviderOptions.allowDynamicClientRegistration ?? false,
@@ -292,6 +292,9 @@ export const convex = (opts: {
     getOAuthServerConfig: oauthProviderGetOAuthServerConfig,
     ...oauthProviderEndpoints
   } = oauthProvider.endpoints;
+  const publicOptions: Record<string, any> = {
+    oauthProvider: oauthProvider.options,
+  };
   // Bearer plugin converts the session token to a cookie
   // for cross domain social login after code verification,
   // and is required for the headers() helper to work.
@@ -307,6 +310,7 @@ export const convex = (opts: {
   return {
     id: "convex",
     version: VERSION,
+      options: publicOptions,
     init: async (ctx) => {
       const { options, logger: _logger } = ctx;
       const getPlugin = ((pluginId: string) => {
@@ -426,6 +430,7 @@ export const convex = (opts: {
           matcher: (ctx) => {
             return Boolean(
               ctx.path?.startsWith("/sign-out") ||
+                ctx.path?.startsWith("/oauth2/end-session") ||
                 ctx.path?.startsWith("/delete-user") ||
                 (ctx.path?.startsWith("/get-session") && !ctx.context.session)
             );

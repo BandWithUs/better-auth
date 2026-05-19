@@ -162,8 +162,8 @@ describe("createClient route registration", () => {
 
     expect(response.headers.get("content-type")).toContain("application/json");
     await expect(response.json()).resolves.toMatchObject({
-      resource: "https://deployment.convex.site",
-      authorization_servers: ["https://deployment.convex.site"],
+      resource: "https://deployment.convex.site/custom/auth",
+      authorization_servers: ["https://deployment.convex.site/custom/auth"],
       bearer_methods_supported: ["header"],
     });
   });

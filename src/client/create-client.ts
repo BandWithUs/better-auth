@@ -117,9 +117,10 @@ const jsonResponse = (body: Record<string, unknown>) =>
 
 const protectedResourceMetadata = (path: string) => {
   const siteUrl = process.env.CONVEX_SITE_URL;
+  const resource = path === "/" ? siteUrl : `${siteUrl}${path}`;
   return {
-    resource: siteUrl,
-    authorization_servers: [siteUrl],
+    resource,
+    authorization_servers: [resource],
     scopes_supported: ["openid", "profile", "email", "offline_access"],
     bearer_methods_supported: ["header"],
     resource_documentation: `${siteUrl}${path}`,
