@@ -115,23 +115,16 @@ const jsonResponse = (body: Record<string, unknown>) =>
     },
   });
 
-const protectedResourceMetadata = (
-  resourcePath: string,
-  authorizationServerPath = resourcePath
-) => {
+const protectedResourceMetadata = (resourcePath: string) => {
   const siteUrl = process.env.CONVEX_SITE_URL;
   if (!siteUrl) {
     throw new Error("CONVEX_SITE_URL is not set");
   }
   const resource =
     resourcePath === "/" ? siteUrl : `${siteUrl}${resourcePath}`;
-  const authorizationServer =
-    authorizationServerPath === "/"
-      ? siteUrl
-      : `${siteUrl}${authorizationServerPath}`;
   return {
     resource,
-    authorization_servers: [authorizationServer],
+    authorization_servers: [siteUrl],
     scopes_supported: ["openid", "profile", "email", "offline_access"],
     bearer_methods_supported: ["header"],
     resource_documentation: `${siteUrl}${resourcePath}`,
@@ -186,11 +179,11 @@ const registerWellKnownRoutes = (http: HttpRouter, path: string) => {
     );
   }
   routeIfMissing(http, protectedResourceRoute, () =>
-    jsonResponse(protectedResourceMetadata(path, authPath || "/"))
+    jsonResponse(protectedResourceMetadata(path))
   );
   if (issuerPath) {
     routeIfMissing(http, `${protectedResourceRoute}${issuerPath}`, () =>
-      jsonResponse(protectedResourceMetadata(path, authPath))
+      jsonResponse(protectedResourceMetadata(path))
     );
   }
   if (!http.lookup(`${protectedResourceRoute}/_probe_`, "GET")) {
@@ -200,9 +193,7 @@ const registerWellKnownRoutes = (http: HttpRouter, path: string) => {
       handler: httpActionGeneric(async (_ctx, request) => {
         const pathname = new URL(request.url).pathname;
         const resourcePath = pathname.slice(protectedResourceRoute.length);
-        return jsonResponse(
-          protectedResourceMetadata(resourcePath, authPath || "/")
-        );
+        return jsonResponse(protectedResourceMetadata(resourcePath));
       }),
     });
   }

@@ -170,7 +170,7 @@ describe("createClient route registration", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
     await expect(response.json()).resolves.toMatchObject({
       resource: "https://deployment.convex.site/custom/auth",
-      authorization_servers: ["https://deployment.convex.site/custom/auth"],
+      authorization_servers: ["https://deployment.convex.site"],
       bearer_methods_supported: ["header"],
     });
 
@@ -192,7 +192,7 @@ describe("createClient route registration", () => {
     );
     await expect(mcpResponse.json()).resolves.toMatchObject({
       resource: "https://deployment.convex.site/mcp",
-      authorization_servers: ["https://deployment.convex.site/custom/auth"],
+      authorization_servers: ["https://deployment.convex.site"],
       bearer_methods_supported: ["header"],
     });
   });
