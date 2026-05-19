@@ -104,6 +104,16 @@ type ConvexOAuthProviderOptions = Partial<
   Omit<OAuthOptions<Scope[]>, "disableJwtPlugin" | "schema">
 >;
 
+const withConvexSiteBaseURL = <TCtx extends { context: { baseURL?: string } }>(
+  ctx: TCtx
+): TCtx => ({
+  ...ctx,
+  context: {
+    ...ctx.context,
+    baseURL: process.env.CONVEX_SITE_URL ?? ctx.context.baseURL,
+  },
+});
+
 export const convex = (opts: {
   /**
    * @param {AuthConfig} authConfig - Auth config from your Convex project.
@@ -446,8 +456,42 @@ export const convex = (opts: {
     },
     endpoints: {
       ...oauthProviderEndpoints,
-      oauthProviderGetOpenIdConfig,
-      oauthProviderGetOAuthServerConfig,
+      oauthProviderGetOpenIdConfig: createAuthEndpoint(
+        "/.well-known/openid-configuration",
+        {
+          method: "GET",
+          metadata: {
+            isAction: false,
+          },
+        },
+        async (ctx) => {
+          const response = await oauthProviderGetOpenIdConfig({
+            ...withConvexSiteBaseURL(ctx),
+            asResponse: false,
+            returnHeaders: false,
+            returnStatus: false,
+          });
+          return response;
+        }
+      ),
+      oauthProviderGetOAuthServerConfig: createAuthEndpoint(
+        "/.well-known/oauth-authorization-server",
+        {
+          method: "GET",
+          metadata: {
+            isAction: false,
+          },
+        },
+        async (ctx) => {
+          const response = await oauthProviderGetOAuthServerConfig({
+            ...withConvexSiteBaseURL(ctx),
+            asResponse: false,
+            returnHeaders: false,
+            returnStatus: false,
+          });
+          return response;
+        }
+      ),
       getOpenIdConfig: createAuthEndpoint(
         "/convex/.well-known/openid-configuration",
         {
@@ -459,7 +503,7 @@ export const convex = (opts: {
         },
         async (ctx) => {
           const response = await oauthProviderGetOpenIdConfig({
-            ...ctx,
+            ...withConvexSiteBaseURL(ctx),
             asResponse: false,
             returnHeaders: false,
             returnStatus: false,
@@ -477,7 +521,7 @@ export const convex = (opts: {
         },
         async (ctx) => {
           const response = await oauthProviderGetOAuthServerConfig({
-            ...ctx,
+            ...withConvexSiteBaseURL(ctx),
             asResponse: false,
             returnHeaders: false,
             returnStatus: false,

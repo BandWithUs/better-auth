@@ -103,3 +103,45 @@ describe("convex plugin OAuth provider options", () => {
     );
   });
 });
+
+describe("convex plugin OAuth metadata", () => {
+  it("uses the Convex site URL for issuer and endpoints", async () => {
+    process.env.CONVEX_SITE_URL = "https://deployment.convex.site";
+    const plugin = convex({ authConfig });
+    const getOAuthServerConfig = plugin.endpoints?.getOAuthServerConfig;
+    expect(getOAuthServerConfig).toBeDefined();
+
+    const response = await getOAuthServerConfig!({
+      context: {
+        baseURL: "https://app.example.com",
+        getPlugin(pluginId: string) {
+          if (pluginId !== "jwt") {
+            return null;
+          }
+          return {
+            options: {
+              jwt: {
+                issuer: "https://deployment.convex.site",
+              },
+              jwks: {
+                jwksPath: "/convex/jwks",
+                keyPairConfig: { alg: "RS256" },
+              },
+            },
+          };
+        },
+      },
+      asResponse: false,
+      returnHeaders: false,
+      returnStatus: false,
+    } as any);
+
+    expect(response).toMatchObject({
+      issuer: "https://deployment.convex.site",
+      authorization_endpoint:
+        "https://deployment.convex.site/oauth2/authorize",
+      token_endpoint: "https://deployment.convex.site/oauth2/token",
+      jwks_uri: "https://deployment.convex.site/convex/jwks",
+    });
+  });
+});
