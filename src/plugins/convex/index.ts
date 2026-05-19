@@ -104,13 +104,19 @@ type ConvexOAuthProviderOptions = Partial<
   Omit<OAuthOptions<Scope[]>, "disableJwtPlugin" | "schema">
 >;
 
+const normalizeBasePath = (basePath?: string) =>
+  !basePath || basePath === "/" ? "" : basePath;
+
 const withConvexSiteBaseURL = <TCtx extends { context: { baseURL?: string } }>(
-  ctx: TCtx
+  ctx: TCtx,
+  basePath?: string
 ): TCtx => ({
   ...ctx,
   context: {
     ...ctx.context,
-    baseURL: process.env.CONVEX_SITE_URL ?? ctx.context.baseURL,
+    baseURL: process.env.CONVEX_SITE_URL
+      ? `${process.env.CONVEX_SITE_URL}${normalizeBasePath(basePath)}`
+      : ctx.context.baseURL,
   },
 });
 
@@ -302,6 +308,9 @@ export const convex = (opts: {
     getOAuthServerConfig: oauthProviderGetOAuthServerConfig,
     ...oauthProviderEndpoints
   } = oauthProvider.endpoints;
+  const getOAuthProviderBasePath = (ctx?: {
+    context?: { options?: { basePath?: string } };
+  }) => ctx?.context?.options?.basePath ?? opts.options?.basePath ?? "/api/auth";
   const publicOptions: Record<string, any> = {
     oauthProvider: oauthProvider.options,
   };
@@ -320,7 +329,7 @@ export const convex = (opts: {
   return {
     id: "convex",
     version: VERSION,
-      options: publicOptions,
+    options: publicOptions,
     init: async (ctx) => {
       const { options, logger: _logger } = ctx;
       const getPlugin = ((pluginId: string) => {
@@ -466,7 +475,7 @@ export const convex = (opts: {
         },
         async (ctx) => {
           const response = await oauthProviderGetOpenIdConfig({
-            ...withConvexSiteBaseURL(ctx),
+            ...withConvexSiteBaseURL(ctx, getOAuthProviderBasePath(ctx)),
             asResponse: false,
             returnHeaders: false,
             returnStatus: false,
@@ -484,7 +493,7 @@ export const convex = (opts: {
         },
         async (ctx) => {
           const response = await oauthProviderGetOAuthServerConfig({
-            ...withConvexSiteBaseURL(ctx),
+            ...withConvexSiteBaseURL(ctx, getOAuthProviderBasePath(ctx)),
             asResponse: false,
             returnHeaders: false,
             returnStatus: false,
@@ -503,7 +512,7 @@ export const convex = (opts: {
         },
         async (ctx) => {
           const response = await oauthProviderGetOpenIdConfig({
-            ...withConvexSiteBaseURL(ctx),
+            ...withConvexSiteBaseURL(ctx, getOAuthProviderBasePath(ctx)),
             asResponse: false,
             returnHeaders: false,
             returnStatus: false,
@@ -521,7 +530,7 @@ export const convex = (opts: {
         },
         async (ctx) => {
           const response = await oauthProviderGetOAuthServerConfig({
-            ...withConvexSiteBaseURL(ctx),
+            ...withConvexSiteBaseURL(ctx, getOAuthProviderBasePath(ctx)),
             asResponse: false,
             returnHeaders: false,
             returnStatus: false,

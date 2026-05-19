@@ -120,6 +120,9 @@ const protectedResourceMetadata = (
   authorizationServerPath = resourcePath
 ) => {
   const siteUrl = process.env.CONVEX_SITE_URL;
+  if (!siteUrl) {
+    throw new Error("CONVEX_SITE_URL is not set");
+  }
   const resource =
     resourcePath === "/" ? siteUrl : `${siteUrl}${resourcePath}`;
   const authorizationServer =
@@ -590,7 +593,8 @@ export const createClient = <
         return registrationAuth;
       };
 
-      const path = opts.basePath ?? "/api/auth";
+      const path =
+        opts.basePath ?? getRegistrationAuth().options.basePath ?? "/api/auth";
       let trustedOriginsOption = opts.trustedOrigins;
       const authRequestHandler = httpActionGeneric(async (ctx, request) => {
         if (config?.verbose) {

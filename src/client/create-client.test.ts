@@ -233,7 +233,9 @@ describe("createClient route registration", () => {
 
     const forwardedRequest = handler.mock.calls[0]?.[0];
     expect(forwardedRequest).toBeInstanceOf(Request);
-    expect(forwardedRequest.headers.get("x-forwarded-host")).toBe("app.example.com");
+    expect(forwardedRequest.headers.get("x-forwarded-host")).toBe(
+      "app.example.com"
+    );
     expect(forwardedRequest.headers.get("x-forwarded-proto")).toBe("https");
   });
 
@@ -252,7 +254,10 @@ describe("createClient route registration", () => {
       }),
     }));
 
-    client.registerRoutesLazy(http, createAuth, { cors: true });
+    client.registerRoutesLazy(http, createAuth, {
+      basePath: "/api/auth",
+      cors: true,
+    });
     expect(createAuth).not.toHaveBeenCalled();
     expect(getRouteHandler(http, "/api/auth/test", "GET")).toBeTruthy();
 
@@ -273,5 +278,78 @@ describe("createClient route registration", () => {
       "https://fallback.example.com"
     );
     expect(createAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it("registerRoutesLazy infers basePath from auth options", () => {
+    const client = createClient(component);
+    const http = httpRouter();
+    const createAuth = vi.fn(() => ({
+      handler: async () => new Response("ok"),
+      options: {
+        basePath: "/custom/auth",
+      },
+      $context: Promise.resolve({
+        options: {
+          trustedOrigins: ["https://app.example.com"],
+        },
+      }),
+    }));
+
+    client.registerRoutesLazy(http, createAuth);
+
+    expect(createAuth).toHaveBeenCalledTimes(1);
+    expect(getRouteHandler(http, "/custom/auth/test", "GET")).toBeTruthy();
+    expect(
+      getRouteHandler(
+        http,
+        "/.well-known/oauth-authorization-server/custom/auth",
+        "GET"
+      )
+    ).toBeTruthy();
+  });
+
+  it("fails fast when CONVEX_SITE_URL is missing for protected resource metadata", async () => {
+    const previousSiteUrl = process.env.CONVEX_SITE_URL;
+    delete process.env.CONVEX_SITE_URL;
+
+    try {
+      const client = createClient(component);
+      const http = httpRouter();
+      const createAuth = vi.fn(() => ({
+        handler: async () => new Response("ok"),
+        options: {
+          basePath: "/custom/auth",
+        },
+        $context: Promise.resolve({
+          options: {
+            trustedOrigins: ["https://app.example.com"],
+          },
+        }),
+      }));
+
+      client.registerRoutes(http, createAuth);
+
+      const handler = getRouteHandler(
+        http,
+        "/.well-known/oauth-protected-resource/custom/auth",
+        "GET"
+      );
+      expect(handler).toBeTruthy();
+
+      await expect(
+        handler!._handler(
+          {},
+          new Request(
+            "https://deployment.convex.site/.well-known/oauth-protected-resource/custom/auth"
+          )
+        )
+      ).rejects.toThrow("CONVEX_SITE_URL is not set");
+    } finally {
+      if (previousSiteUrl === undefined) {
+        delete process.env.CONVEX_SITE_URL;
+      } else {
+        process.env.CONVEX_SITE_URL = previousSiteUrl;
+      }
+    }
   });
 });
