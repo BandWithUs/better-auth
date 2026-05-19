@@ -1,10 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthConfig } from "convex/server";
+
+const { oauthProviderMock } = vi.hoisted(() => ({
+  oauthProviderMock: vi.fn(() => ({
+    endpoints: {
+      getOpenIdConfig: vi.fn(),
+      getOAuthServerConfig: vi.fn(),
+    },
+    hooks: { before: [], after: [] },
+    schema: {},
+  })),
+}));
+
+vi.mock("@better-auth/oauth-provider", () => ({
+  oauthProvider: oauthProviderMock,
+}));
+
 import { convex } from "./index.js";
 
 const authConfig = {
   providers: [{ applicationID: "convex", domain: "https://example.com" }],
 } satisfies AuthConfig;
+
+beforeEach(() => {
+  oauthProviderMock.mockClear();
+});
 
 const getJwtSetCookieMatcher = () => {
   const plugin = convex({ authConfig });
@@ -51,5 +71,24 @@ describe("convex plugin JWT cookie refresh matcher", () => {
     };
     expect(matcher(withSessionCtx as unknown as MatcherContext)).toBe(true);
     expect(matcher(withoutSessionCtx as unknown as MatcherContext)).toBe(false);
+  });
+});
+
+describe("convex plugin OAuth provider defaults", () => {
+  it("defaults loginPage to the non-routable legacy path", () => {
+    convex({ authConfig });
+
+    expect(oauthProviderMock.mock.lastCall?.[0].loginPage).toBe("/not-used");
+  });
+
+  it("preserves a configured loginPage override", () => {
+    const loginPage = "https://app.example.com/sign-in";
+
+    convex({
+      authConfig,
+      oauthProvider: { loginPage },
+    });
+
+    expect(oauthProviderMock.mock.lastCall?.[0].loginPage).toBe(loginPage);
   });
 });

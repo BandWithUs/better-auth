@@ -273,7 +273,7 @@ export const convex = (opts: {
   });
   const oauthProviderOptions = opts.oauthProvider ?? {};
   const oauthProvider = oauthProviderPlugin({
-    loginPage: oauthProviderOptions.loginPage ?? "/sign-in",
+    loginPage: oauthProviderOptions.loginPage ?? "/not-used",
     consentPage: oauthProviderOptions.consentPage ?? "/oauth2/consent",
     allowDynamicClientRegistration:
       oauthProviderOptions.allowDynamicClientRegistration ?? false,
