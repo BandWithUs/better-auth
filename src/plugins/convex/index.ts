@@ -1,6 +1,11 @@
 import type { BetterAuthPlugin, Session, User } from "better-auth";
 import type { BetterAuthOptions } from "better-auth/minimal";
 import {
+  oauthProvider as oauthProviderPlugin,
+  type OAuthOptions,
+  type Scope,
+} from "@better-auth/oauth-provider";
+import {
   createAuthEndpoint,
   createAuthMiddleware,
   sessionMiddleware,
@@ -8,7 +13,6 @@ import {
 import { bearer as bearerPlugin } from "better-auth/plugins/bearer";
 import { jwt as jwtPlugin } from "better-auth/plugins/jwt";
 import type { JwtOptions, Jwk } from "better-auth/plugins/jwt";
-import { oidcProvider as oidcProviderPlugin } from "better-auth/plugins/oidc-provider";
 import { omit } from "convex-helpers";
 import type { AuthConfig, AuthProvider } from "convex/server";
 import { VERSION } from "../../version.js";
@@ -18,11 +22,24 @@ export const JWT_COOKIE_NAME = "convex_jwt";
 type BetterAuthAfterHooks = NonNullable<
   NonNullable<BetterAuthPlugin["hooks"]>["after"]
 >;
+type BetterAuthBeforeHooks = NonNullable<
+  NonNullable<BetterAuthPlugin["hooks"]>["before"]
+>;
 type BetterAuthAfterHook = BetterAuthAfterHooks[number];
+type BetterAuthBeforeHook = BetterAuthBeforeHooks[number];
 type BetterAuthHookContext = Parameters<BetterAuthAfterHook["matcher"]>[0];
 
+const normalizeBeforeHooks = <THook extends BetterAuthBeforeHook>(
+  hooks: THook[] = []
+): BetterAuthBeforeHooks => {
+  return hooks.map((hook) => ({
+    ...hook,
+    matcher: (ctx: BetterAuthHookContext) => Boolean(hook.matcher(ctx)),
+  }));
+};
+
 const normalizeAfterHooks = <THook extends BetterAuthAfterHook>(
-  hooks: THook[]
+  hooks: THook[] = []
 ): BetterAuthAfterHooks => {
   return hooks.map((hook) => ({
     ...hook,
@@ -73,6 +90,10 @@ const parseAuthConfig = (authConfig: AuthConfig, opts: { jwks?: string }) => {
   }
   return providerConfig;
 };
+
+type ConvexOAuthProviderOptions = Partial<
+  Omit<OAuthOptions<Scope[]>, "disableJwtPlugin" | "schema">
+>;
 
 export const convex = (opts: {
   /**
@@ -170,20 +191,19 @@ export const convex = (opts: {
   jwksRotateOnTokenGenerationError?: boolean;
   /**
    * @param {BetterAuthOptions} options - Better Auth options. Not required,
-   * currently used to pass the basePath to the oidcProvider plugin.
+   * currently used to pass the basePath to the oauthProvider plugin.
    */
   options?: BetterAuthOptions;
+  /**
+   * OAuth 2.1 / OIDC authorization server configuration.
+   *
+   * The Convex plugin provides the required jwt plugin integration
+   * internally, so do not set disableJwtPlugin here.
+   */
+  oauthProvider?: ConvexOAuthProviderOptions;
 }) => {
   const jwtExpirationSeconds =
     opts.jwt?.expirationSeconds ?? opts.jwtExpirationSeconds ?? 60 * 15;
-  const oidcProvider = oidcProviderPlugin({
-    loginPage: "/not-used",
-    metadata: {
-      issuer: `${process.env.CONVEX_SITE_URL}`,
-      jwks_uri: `${process.env.CONVEX_SITE_URL}${opts.options?.basePath ?? "/api/auth"}/convex/jwks`,
-    },
-    __skipDeprecationWarning: true,
-  });
   const providerConfig = parseAuthConfig(opts.authConfig, opts);
 
   const jwtOptions = {
@@ -242,6 +262,27 @@ export const convex = (opts: {
       },
     },
   });
+  const oauthProviderOptions = opts.oauthProvider ?? {};
+  const oauthProvider = oauthProviderPlugin({
+    loginPage: oauthProviderOptions.loginPage ?? "/sign-in",
+    consentPage: oauthProviderOptions.consentPage ?? "/oauth2/consent",
+    allowDynamicClientRegistration:
+      oauthProviderOptions.allowDynamicClientRegistration ?? false,
+    allowUnauthenticatedClientRegistration:
+      oauthProviderOptions.allowUnauthenticatedClientRegistration ?? false,
+    ...oauthProviderOptions,
+    disableJwtPlugin: false,
+    silenceWarnings: {
+      oauthAuthServerConfig: true,
+      openidConfig: true,
+      ...oauthProviderOptions.silenceWarnings,
+    },
+  });
+  const {
+    getOpenIdConfig: oauthProviderGetOpenIdConfig,
+    getOAuthServerConfig: oauthProviderGetOAuthServerConfig,
+    ...oauthProviderEndpoints
+  } = oauthProvider.endpoints;
   // Bearer plugin converts the session token to a cookie
   // for cross domain social login after code verification,
   // and is required for the headers() helper to work.
@@ -250,14 +291,28 @@ export const convex = (opts: {
     user: {
       fields: { userId: { type: "string", required: false, input: false } },
     } as const,
+    ...oauthProvider.schema,
     ...jwt.schema,
   };
 
   return {
     id: "convex",
     version: VERSION,
-    init: (ctx) => {
+    init: async (ctx) => {
       const { options, logger: _logger } = ctx;
+      const getPlugin = ((pluginId: string) => {
+        if (pluginId === "jwt") {
+          return jwt;
+        }
+        if (pluginId === "oauth-provider") {
+          return oauthProvider;
+        }
+        return ctx.getPlugin(pluginId as any);
+      }) as typeof ctx.getPlugin;
+      const oauthProviderInit = await oauthProvider.init?.({
+        ...ctx,
+        getPlugin,
+      } as any);
       if (options.basePath !== "/api/auth" && !opts.options?.basePath) {
         // eslint-disable-next-line no-console
         console.warn(
@@ -273,9 +328,17 @@ export const convex = (opts: {
           `Better Auth basePath ${options.basePath} does not match Convex plugin basePath ${opts.options?.basePath}. This is probably a mistake.`
         );
       }
+      return {
+        ...oauthProviderInit,
+        context: {
+          ...oauthProviderInit?.context,
+          getPlugin,
+        },
+      };
     },
     hooks: {
       before: [
+        ...normalizeBeforeHooks(oauthProvider.hooks.before),
         ...bearer.hooks.before,
         // In query context, no writes can succeed. No-op adapter write
         // methods and session refresh to prevent errors from fire-and-forget
@@ -314,7 +377,7 @@ export const convex = (opts: {
         },
       ],
       after: [
-        ...normalizeAfterHooks(oidcProvider.hooks.after),
+        ...normalizeAfterHooks(oauthProvider.hooks.after),
         {
           matcher: (ctx) => {
             return Boolean(
@@ -374,6 +437,9 @@ export const convex = (opts: {
       ],
     },
     endpoints: {
+      ...oauthProviderEndpoints,
+      oauthProviderGetOpenIdConfig,
+      oauthProviderGetOAuthServerConfig,
       getOpenIdConfig: createAuthEndpoint(
         "/convex/.well-known/openid-configuration",
         {
@@ -384,7 +450,45 @@ export const convex = (opts: {
           // TODO: properly type this
         },
         async (ctx) => {
-          const response = await oidcProvider.endpoints.getOpenIdConfig({
+          const response = await oauthProviderGetOpenIdConfig({
+            ...ctx,
+            asResponse: false,
+            returnHeaders: false,
+            returnStatus: false,
+          });
+          return response;
+        }
+      ),
+      getOAuthServerConfig: createAuthEndpoint(
+        "/convex/.well-known/oauth-authorization-server",
+        {
+          method: "GET",
+          metadata: {
+            isAction: false,
+          },
+        },
+        async (ctx) => {
+          const response = await oauthProviderGetOAuthServerConfig({
+            ...ctx,
+            asResponse: false,
+            returnHeaders: false,
+            returnStatus: false,
+          });
+          return response;
+        }
+      ),
+      getRootJwks: createAuthEndpoint(
+        "/jwks",
+        {
+          method: "GET",
+          metadata: {
+            openapi: {
+              description: "Get the JSON Web Key Set",
+            },
+          },
+        },
+        async (ctx) => {
+          const response = await jwt.endpoints.getJwks({
             ...ctx,
             asResponse: false,
             returnHeaders: false,

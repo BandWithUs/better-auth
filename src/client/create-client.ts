@@ -106,6 +106,74 @@ const restoreOriginalForwardedHeaders = (request: Request) => {
   return new Request(request, { headers });
 };
 
+const jsonResponse = (body: Record<string, unknown>) =>
+  new Response(JSON.stringify(body), {
+    headers: {
+      "content-type": "application/json",
+      "access-control-allow-methods": "GET",
+      "access-control-allow-origin": "*",
+    },
+  });
+
+const protectedResourceMetadata = (path: string) => {
+  const siteUrl = process.env.CONVEX_SITE_URL;
+  return {
+    resource: siteUrl,
+    authorization_servers: [siteUrl],
+    scopes_supported: ["openid", "profile", "email", "offline_access"],
+    bearer_methods_supported: ["header"],
+    resource_documentation: `${siteUrl}${path}`,
+  };
+};
+
+const routeIfMissing = (
+  http: HttpRouter,
+  path: string,
+  handler: () => Response | Promise<Response>
+) => {
+  if (http.lookup(path, "GET")) {
+    return;
+  }
+  http.route({
+    path,
+    method: "GET",
+    handler: httpActionGeneric(async () => handler()),
+  });
+};
+
+const registerWellKnownRoutes = (http: HttpRouter, path: string) => {
+  const issuerPath = path === "/" ? "" : path;
+  const authPath = path === "/" ? "" : path;
+  routeIfMissing(http, "/.well-known/openid-configuration", () => {
+    const url = `${process.env.CONVEX_SITE_URL}${authPath}/convex/.well-known/openid-configuration`;
+    return Response.redirect(url);
+  });
+  routeIfMissing(http, "/.well-known/oauth-authorization-server", () => {
+    const url = `${process.env.CONVEX_SITE_URL}${authPath}/convex/.well-known/oauth-authorization-server`;
+    return Response.redirect(url);
+  });
+  if (issuerPath) {
+    routeIfMissing(
+      http,
+      `/.well-known/oauth-authorization-server${issuerPath}`,
+      () => {
+        const url = `${process.env.CONVEX_SITE_URL}${authPath}/convex/.well-known/oauth-authorization-server`;
+        return Response.redirect(url);
+      }
+    );
+  }
+  routeIfMissing(http, "/.well-known/oauth-protected-resource", () =>
+    jsonResponse(protectedResourceMetadata(path))
+  );
+  if (issuerPath) {
+    routeIfMissing(
+      http,
+      `/.well-known/oauth-protected-resource${issuerPath}`,
+      () => jsonResponse(protectedResourceMetadata(path))
+    );
+  }
+};
+
 /**
  * Backend API for the Better Auth component.
  * Responsible for exposing the `client` and `triggers` APIs to the client, http
@@ -402,20 +470,7 @@ export const createClient = <
         }
         return response;
       });
-      const wellKnown = http.lookup("/.well-known/openid-configuration", "GET");
-
-      // If registerRoutes is used multiple times, this may already be defined
-      if (!wellKnown) {
-        // Redirect root well-known to api well-known
-        http.route({
-          path: "/.well-known/openid-configuration",
-          method: "GET",
-          handler: httpActionGeneric(async () => {
-            const url = `${process.env.CONVEX_SITE_URL}${path}/convex/.well-known/openid-configuration`;
-            return Response.redirect(url);
-          }),
-        });
-      }
+      registerWellKnownRoutes(http, path);
 
       if (!opts.cors) {
         http.route({
@@ -472,7 +527,7 @@ export const createClient = <
           "Better-Auth-Cookie",
           "Authorization",
         ].concat(corsOpts.allowedHeaders ?? []),
-        exposedHeaders: ["Set-Better-Auth-Cookie"].concat(
+        exposedHeaders: ["Set-Better-Auth-Cookie", "WWW-Authenticate"].concat(
           corsOpts.exposedHeaders ?? []
         ),
         debug: config?.verbose,
@@ -522,20 +577,7 @@ export const createClient = <
         }
         return response;
       });
-      const wellKnown = http.lookup("/.well-known/openid-configuration", "GET");
-
-      // If registerRoutes is used multiple times, this may already be defined
-      if (!wellKnown) {
-        // Redirect root well-known to api well-known
-        http.route({
-          path: "/.well-known/openid-configuration",
-          method: "GET",
-          handler: httpActionGeneric(async () => {
-            const url = `${process.env.CONVEX_SITE_URL}${path}/convex/.well-known/openid-configuration`;
-            return Response.redirect(url);
-          }),
-        });
-      }
+      registerWellKnownRoutes(http, path);
 
       if (!opts.cors) {
         http.route({
@@ -585,7 +627,7 @@ export const createClient = <
           "Better-Auth-Cookie",
           "Authorization",
         ].concat(corsOpts.allowedHeaders ?? []),
-        exposedHeaders: ["Set-Better-Auth-Cookie"].concat(
+        exposedHeaders: ["Set-Better-Auth-Cookie", "WWW-Authenticate"].concat(
           corsOpts.exposedHeaders ?? []
         ),
         debug: config?.verbose,

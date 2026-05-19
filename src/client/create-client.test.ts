@@ -52,6 +52,19 @@ describe("createClient route registration", () => {
     expect(
       getRouteHandler(http, "/.well-known/openid-configuration", "GET")
     ).toBeTruthy();
+    expect(
+      getRouteHandler(http, "/.well-known/oauth-authorization-server", "GET")
+    ).toBeTruthy();
+    expect(
+      getRouteHandler(
+        http,
+        "/.well-known/oauth-authorization-server/custom/auth",
+        "GET"
+      )
+    ).toBeTruthy();
+    expect(
+      getRouteHandler(http, "/.well-known/oauth-protected-resource", "GET")
+    ).toBeTruthy();
   });
 
   it("registerRoutes uses auth options for CORS and basePath", async () => {
@@ -100,13 +113,59 @@ describe("createClient route registration", () => {
 
     const getHandler = getRouteHandler(http, "/custom/auth/test", "GET");
     expect(getHandler).toBeTruthy();
-    await getHandler!._handler(
+    const getResponse = await getHandler!._handler(
       {},
       new Request("https://deployment.convex.site/custom/auth/test", {
         method: "GET",
+        headers: {
+          origin: "https://app.example.com",
+        },
       })
     );
+    expect(getResponse.headers.get("access-control-expose-headers")).toContain(
+      "WWW-Authenticate"
+    );
     expect(createAuth).toHaveBeenCalledTimes(2);
+  });
+
+  it("registerRoutes exposes OAuth protected resource metadata", async () => {
+    process.env.CONVEX_SITE_URL = "https://deployment.convex.site";
+    const client = createClient(component);
+    const http = httpRouter();
+    const createAuth = vi.fn(() => ({
+      handler: async () => new Response("ok"),
+      options: {
+        basePath: "/custom/auth",
+        trustedOrigins: ["https://app.example.com"],
+      },
+      $context: Promise.resolve({
+        options: {
+          trustedOrigins: ["https://app.example.com"],
+        },
+      }),
+    }));
+
+    client.registerRoutes(http, createAuth);
+
+    const handler = getRouteHandler(
+      http,
+      "/.well-known/oauth-protected-resource/custom/auth",
+      "GET"
+    );
+    expect(handler).toBeTruthy();
+    const response = await handler!._handler(
+      {},
+      new Request(
+        "https://deployment.convex.site/.well-known/oauth-protected-resource/custom/auth"
+      )
+    );
+
+    expect(response.headers.get("content-type")).toContain("application/json");
+    await expect(response.json()).resolves.toMatchObject({
+      resource: "https://deployment.convex.site",
+      authorization_servers: ["https://deployment.convex.site"],
+      bearer_methods_supported: ["header"],
+    });
   });
 
   it("restores preserved forwarded host headers before calling auth.handler", async () => {
